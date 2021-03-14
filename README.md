@@ -1,38 +1,27 @@
 # KotlinGitHubAppSample
 
-KotlinGitHubAppSample is your new project powered by [Ktor](http://ktor.io) framework.
+This is a Kotlin implementation of [the official GitHubApp sample](https://github.com/github-developer/using-the-github-api-in-your-app.git) implemented in Ruby.
+
+## Run the server
+
+The explanation is based on the assumption that IntelliJ is used.
+
+1. Open the source code for this app.
+2. Set the environment variable to the following information issued when you register the GitHubApp.
+   - GITHUB_WEBHOOK_SECRET
+   - GITHUB_APP_IDENTIFIER
+   - GITHUB_PRIVATE_KEY
+     - This is the private key in RSA PEM format that was issued when you registered the GitHubApp.
+     - Replace the line breaks to "\n".
+3. Run this app from IntelliJ.
+
+For more information on setting environment variables, please see [the official environment building page](https://docs.github.com/en/developers/apps/setting-up-your-development-environment-to-create-a-github-app#step-4-prepare-the-runtime-environment).
+
+## Note
+
+KotlinGitHubAppSample is powered by [Ktor](http://ktor.io) framework.
 
 <img src="https://repository-images.githubusercontent.com/40136600/f3f5fd00-c59e-11e9-8284-cb297d193133" alt="Ktor" width="100" style="max-width:20%;">
 
-Company website: example.com Ktor Version: 1.5.2 Kotlin Version: 1.4.10
+Ktor Version: 1.5.2 Kotlin Version: 1.4.10
 BuildSystem: [Gradle with Kotlin DSL](https://docs.gradle.org/current/userguide/kotlin_dsl.html)
-
-# Ktor Documentation
-
-Ktor is a framework for quickly creating web applications in Kotlin with minimal effort.
-
-* Ktor project's [Github](https://github.com/ktorio/ktor/blob/master/README.md)
-* Getting started with [Gradle](http://ktor.io/quickstart/gradle.html)
-* Getting started with [Maven](http://ktor.io/quickstart/maven.html)
-* Getting started with [IDEA](http://ktor.io/quickstart/intellij-idea.html)
-
-Selected Features:
-
-# Reporting Issues / Support
-
-Please use [our issue tracker](https://youtrack.jetbrains.com/issues/KTOR) for filing feature requests and bugs. If
-you'd like to ask a question, we recommmend [StackOverflow](https://stackoverflow.com/questions/tagged/ktor) where
-members of the team monitor frequently.
-
-There is also community support on the [Kotlin Slack Ktor channel](https://app.slack.com/client/T09229ZC6/C0A974TJ9)
-
-# Reporting Security Vulnerabilities
-
-If you find a security vulnerability in Ktor, we kindly request that you reach out to the JetBrains security team via
-our [responsible disclosure process](https://www.jetbrains.com/legal/terms/responsible-disclosure.html).
-
-# Contributing
-
-Please see [the contribution guide](CONTRIBUTING.md) and the [Code of conduct](CODE_OF_CONDUCT.md) before contributing.
-
-TODO: contribution of features guide (link)
