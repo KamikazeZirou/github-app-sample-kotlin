@@ -11,7 +11,7 @@ plugins {
     kotlin("plugin.serialization") version "1.4.30"
 }
 
-group = "com.example"
+group = "com.example.githubapp"
 version = "0.0.1"
 application {
     mainClass.set("io.ktor.server.netty.EngineMain")
@@ -30,5 +30,6 @@ dependencies {
     implementation("io.ktor:ktor-serialization:$ktor_version")
     implementation("io.ktor:ktor-auth-jwt:$ktor_version")
     implementation("org.kohsuke:github-api:1.123")
+    implementation("org.bouncycastle:bcprov-jdk15on:1.68")
     testImplementation("io.ktor:ktor-server-tests:$ktor_version")
 }

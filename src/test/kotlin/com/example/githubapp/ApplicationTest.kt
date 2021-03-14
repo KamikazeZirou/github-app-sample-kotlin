@@ -1,4 +1,4 @@
-package com.example
+package com.example.githubapp
 
 import io.ktor.application.*
 import io.ktor.response.*
