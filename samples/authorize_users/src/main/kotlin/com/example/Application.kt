@@ -11,13 +11,17 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.features.*
 import io.ktor.html.*
+import io.ktor.http.*
 import io.ktor.locations.*
 import io.ktor.request.*
 import io.ktor.routing.*
 import kotlinx.html.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import org.kohsuke.github.GitHub
+import org.kohsuke.github.GitHubBuilder
 import org.slf4j.event.Level
+import java.io.Closeable
 
 fun main(args: Array<String>): Unit =
     io.ktor.server.netty.EngineMain.main(args)
@@ -195,12 +199,7 @@ data class ListInstalledRepositoriesResponse(
     val repositories: List<Repository>,
 )
 
-
-private suspend fun ApplicationCall.loggedInSuccessResponse(callback: OAuthAccessTokenResponse) {
-    val oauth2 = callback as? OAuthAccessTokenResponse.OAuth2 ?: return
-    println(oauth2)
-
-//    // installationのリストを取得する
+class GitHubClient(val accessToken: String) : Closeable {
     val client = HttpClient(CIO).config {
         install(JsonFeature) {
             serializer = KotlinxSerializer(kotlinx.serialization.json.Json {
@@ -209,29 +208,49 @@ private suspend fun ApplicationCall.loggedInSuccessResponse(callback: OAuthAcces
             })
         }
     }
+
+    override fun close() {
+        client.close()
+    }
+
+    suspend inline fun <reified T> get(
+        urlString: String,
+        block: HttpRequestBuilder.() -> Unit = {}
+    ): T = client.get(urlString) {
+        header("Accept", "application/vnd.github.v3+json")
+        header("Authorization", "token $accessToken")
+        block()
+    }
+
+    suspend inline fun <reified T> post(
+        urlString: String,
+        block: HttpRequestBuilder.() -> Unit = {}
+    ): T = client.post(urlString) {
+        header("Accept", "application/vnd.github.v3+json")
+        header("Authorization", "token $accessToken")
+        block()
+    }
+}
+
+private suspend fun ApplicationCall.loggedInSuccessResponse(callback: OAuthAccessTokenResponse) {
+    val oauth2 = callback as? OAuthAccessTokenResponse.OAuth2 ?: return
+    println(oauth2)
+
+    // installationのリストを取得する
+    val client = GitHubClient(oauth2.accessToken)
     val repositories = client.use {
         // Installationの取得
-        val response = it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {
-            header("Accept", "application/vnd.github.v3+json")
-            header("Authorization", "token ${oauth2.accessToken}")
-        }
+        val response = it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {}
         println(response)
 
-        // リポジトリの取得
         val installation = response.installations.first()
         val response2 =
-            it.get<ListInstalledRepositoriesResponse>("https://api.github.com/user/installations/${installation.id}/repositories") {
-                header("Accept", "application/vnd.github.v3+json")
-                header("Authorization", "token ${oauth2.accessToken}")
-            }
+            it.get<ListInstalledRepositoriesResponse>("https://api.github.com/user/installations/${installation.id}/repositories") {}
         print(response2)
 
         // リポジトリにIssueを登録
         val repo = response2.repositories.first()
         val response3: HttpResponse = it.post("https://api.github.com/repos/${repo.fullName}/issues") {
-            header("Accept", "application/vnd.github.v3+json")
-            header("Authorization", "token ${oauth2.accessToken}")
-            parameter("title", "test")
             body = """{"title":"title","body":"body"}"""
         }
         print(response3)
