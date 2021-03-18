@@ -1,94 +1,106 @@
 package com.example
 
-import io.ktor.routing.*
-import io.ktor.http.*
-import io.ktor.features.*
-import io.ktor.serialization.*
+import io.ktor.application.*
 import io.ktor.auth.*
-import io.ktor.util.*
-import io.ktor.locations.*
 import io.ktor.client.*
 import io.ktor.client.engine.apache.*
-import org.slf4j.event.*
-import io.ktor.application.*
-import io.ktor.response.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.features.json.*
+import io.ktor.client.features.json.serializer.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.features.*
+import io.ktor.html.*
+import io.ktor.locations.*
 import io.ktor.request.*
+import io.ktor.routing.*
+import kotlinx.html.*
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import org.slf4j.event.Level
 
 fun main(args: Array<String>): Unit =
     io.ktor.server.netty.EngineMain.main(args)
 
-/**
- * Please note that you can use any other name instead of *module*.
- * Also note that you can have more then one modules in your application.
- * */
+
+/*
+val appIdentifier = System.getenv("GITHUB_APP_IDENTIFIER") ?: throw IllegalStateException()
+private val privateKey: RSAPrivateKey = fun(): RSAPrivateKey {
+    val pemPrivateKey = System.getenv("GITHUB_PRIVATE_KEY")
+        ?.replace("\\n", "\n")
+        ?: throw IllegalStateException()
+
+    return StringReader(pemPrivateKey).use {
+        val pemReader = PemReader(it)
+        val pemObject = pemReader.readPemObject()
+        val content = pemObject.content
+        val spec = PKCS8EncodedKeySpec(content)
+        val rsaFact = KeyFactory.getInstance("RSA")
+        rsaFact.generatePrivate(spec) as RSAPrivateKey
+    }
+}()
+ */
+
+val loginProviders = listOf(
+    OAuthServerSettings.OAuth2ServerSettings(
+        name = "github",
+        authorizeUrl = "https://github.com/login/oauth/authorize",
+        accessTokenUrl = "https://github.com/login/oauth/access_token",
+        clientId = System.getenv("CLIENT_ID") ?: throw IllegalStateException(),
+        clientSecret = System.getenv("CLIENT_SECRET") ?: throw IllegalStateException()
+    )
+).associateBy { it.name }
+
 @Suppress("unused") // Referenced in application.conf
 @kotlin.jvm.JvmOverloads
 fun Application.module(testing: Boolean = false) {
-
-    install(ContentNegotiation) {
-        json()
-    }
-
-
-    install(Locations) {
-    }
-    val loginProviders = listOf(
-        OAuthServerSettings.OAuth2ServerSettings(
-            name = "github",
-            authorizeUrl = "https://github.com/login/oauth/authorize",
-            accessTokenUrl = "https://github.com/login/oauth/access_token",
-            clientId = "***",
-            clientSecret = "***"
-        )
-    ).associateBy { it.name }
-    authentication {
-        oauth("gitHubOAuth") {
-            client = HttpClient(Apache)
-            providerLookup = { loginProviders[application.locations.resolve<login>(login::class, this).type] }
-            urlProvider = { url(login(it.name)) }
-        }
-    }
+    install(Locations)
     install(CallLogging) {
         level = Level.INFO
         filter { call -> call.request.path().startsWith("/") }
     }
-    routing {
-        get("/") {
-            call.respondText("Hello World!")
+
+    authentication {
+        oauth("gitHubOAuth") {
+            client = HttpClient(Apache)
+            providerLookup = { loginProviders[application.locations.resolve<login>(login::class, this).type] }
+            urlProvider = { p -> redirectUrl(login(p.name), false) }
         }
     }
+
     routing {
-        get("/json/kotlinx-serialization") {
-            call.respond(mapOf("hello" to "world"))
+        get<index> {
+            call.respondHtml {
+                head {
+                    title { +"index page" }
+                }
+                body {
+                    h1 {
+                        +"Try to login"
+                    }
+                    p {
+                        a(href = locations.href(login())) {
+                            +"Login"
+                        }
+                    }
+                }
+            }
         }
-    }
-    routing {
-        get<MyLocation> {
-            call.respondText("Location: name=${it.name}, arg1=${it.arg1}, arg2=${it.arg2}")
-        }
-        // Register nested routes
-        get<Type.Edit> {
-            call.respondText("Inside $it")
-        }
-        get<Type.List> {
-            call.respondText("Inside $it")
-        }
-    }
-    routing {
+
         authenticate("gitHubOAuth") {
             location<login>() {
                 param("error") {
                     handle {
-                        // TODO: call.loginFailedPage(call.parameters.getAll("error").orEmpty())
+                        call.loginFailedPage(call.parameters.getAll("error").orEmpty())
                     }
                 }
 
                 handle {
                     val principal = call.authentication.principal<OAuthAccessTokenResponse>()
                     if (principal != null) {
-                        // TODO: call.loggedInSuccessResponse(principal)
+                        call.loggedInSuccessResponse(principal)
                     } else {
-                        // TODO: call.loginPage()
+                        call.loginPage()
                     }
                 }
             }
@@ -96,16 +108,157 @@ fun Application.module(testing: Boolean = false) {
     }
 }
 
-@Location("/location/{name}")
-class MyLocation(val name: String, val arg1: Int = 42, val arg2: String = "default")
-@Location("/type/{name}")
-data class Type(val name: String) {
-    @Location("/edit")
-    data class Edit(val type: Type)
-
-    @Location("/list/{page}")
-    data class List(val type: Type, val page: Int)
-}
+@Location("/")
+class index()
 
 @Location("/login/{type?}")
 class login(val type: String = "")
+
+private fun <T : Any> ApplicationCall.redirectUrl(t: T, secure: Boolean = true): String {
+    val hostPort = request.host()!! + request.port().let { port -> if (port == 80) "" else ":$port" }
+    val protocol = when {
+        secure -> "https"
+        else -> "http"
+    }
+    return "$protocol://$hostPort${application.locations.href(t)}"
+}
+
+private suspend fun ApplicationCall.loginPage() {
+    respondHtml {
+        head {
+            title { +"Login with" }
+        }
+        body {
+            h1 {
+                +"Login with:"
+            }
+
+            for (p in loginProviders) {
+                p {
+                    a(href = application.locations.href(login(p.key))) {
+                        +p.key
+                    }
+                }
+            }
+        }
+    }
+}
+
+private suspend fun ApplicationCall.loginFailedPage(errors: List<String>) {
+    respondHtml {
+        head {
+            title { +"Login with" }
+        }
+        body {
+            h1 {
+                +"Login error"
+            }
+
+            for (e in errors) {
+                p {
+                    +e
+                }
+            }
+        }
+    }
+}
+
+@Serializable
+data class Account(
+    val login: String,
+)
+
+@Serializable
+data class Repository(
+    @SerialName("full_name")
+    val fullName: String,
+    @SerialName("owner")
+    val owner: Account,
+)
+
+@Serializable
+data class Installation(
+    val id: String,
+)
+
+@Serializable
+data class ListInstallationsResponse(
+    @SerialName("total_count")
+    val totalCount: Int,
+    val installations: List<Installation>
+)
+
+@Serializable
+data class ListInstalledRepositoriesResponse(
+    @SerialName("total_count")
+    val totalCount: Int,
+    val repositories: List<Repository>,
+)
+
+
+private suspend fun ApplicationCall.loggedInSuccessResponse(callback: OAuthAccessTokenResponse) {
+    val oauth2 = callback as? OAuthAccessTokenResponse.OAuth2 ?: return
+    println(oauth2)
+
+//    // installationのリストを取得する
+    val client = HttpClient(CIO).config {
+        install(JsonFeature) {
+            serializer = KotlinxSerializer(kotlinx.serialization.json.Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+            })
+        }
+    }
+    val repositories = client.use {
+        // Installationの取得
+        val response = it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {
+            header("Accept", "application/vnd.github.v3+json")
+            header("Authorization", "token ${oauth2.accessToken}")
+        }
+        println(response)
+
+        // リポジトリの取得
+        val installation = response.installations.first()
+        val response2 =
+            it.get<ListInstalledRepositoriesResponse>("https://api.github.com/user/installations/${installation.id}/repositories") {
+                header("Accept", "application/vnd.github.v3+json")
+                header("Authorization", "token ${oauth2.accessToken}")
+            }
+        print(response2)
+
+        // リポジトリにIssueを登録
+        val repo = response2.repositories.first()
+        val response3: HttpResponse = it.post("https://api.github.com/repos/${repo.fullName}/issues") {
+            header("Accept", "application/vnd.github.v3+json")
+            header("Authorization", "token ${oauth2.accessToken}")
+            parameter("title", "test")
+            body = """{"title":"title","body":"body"}"""
+        }
+        print(response3)
+
+        response2.repositories
+    }
+
+    respondHtml {
+        head {
+            title { +"Logged in" }
+        }
+        body {
+            h1 {
+                +"You are logged in"
+            }
+            p {
+                +"Your token is $callback"
+            }
+
+            ul {
+                repositories.forEach {
+                    li {
+                        +it.fullName
+                    }
+                }
+            }
+        }
+
+    }
+}
