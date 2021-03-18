@@ -169,6 +169,7 @@ private suspend fun ApplicationCall.loginFailedPage(errors: List<String>) {
 
 @Serializable
 data class Account(
+    val id: Int,
     val login: String,
 )
 
@@ -239,6 +240,11 @@ private suspend fun ApplicationCall.loggedInSuccessResponse(callback: OAuthAcces
     // installationのリストを取得する
     val client = GitHubClient(oauth2.accessToken)
     val repositories = client.use {
+        val user = it.get<Account>("https://api.github.com/user") {}
+        println(user)
+
+        // TODO Save (User, AccessToken, RefreshToken)
+
         // Installationの取得
         val response = it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {}
         println(response)
