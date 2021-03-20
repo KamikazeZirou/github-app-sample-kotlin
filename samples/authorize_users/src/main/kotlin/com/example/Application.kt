@@ -3,7 +3,6 @@ package com.example
 import io.ktor.application.*
 import io.ktor.auth.*
 import io.ktor.client.*
-import io.ktor.client.engine.apache.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.features.json.*
 import io.ktor.client.features.json.serializer.*
@@ -11,39 +10,19 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.features.*
 import io.ktor.html.*
-import io.ktor.http.*
 import io.ktor.locations.*
 import io.ktor.request.*
+import io.ktor.response.*
 import io.ktor.routing.*
+import io.ktor.sessions.*
 import kotlinx.html.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import org.kohsuke.github.GitHub
-import org.kohsuke.github.GitHubBuilder
 import org.slf4j.event.Level
 import java.io.Closeable
 
 fun main(args: Array<String>): Unit =
     io.ktor.server.netty.EngineMain.main(args)
-
-
-/*
-val appIdentifier = System.getenv("GITHUB_APP_IDENTIFIER") ?: throw IllegalStateException()
-private val privateKey: RSAPrivateKey = fun(): RSAPrivateKey {
-    val pemPrivateKey = System.getenv("GITHUB_PRIVATE_KEY")
-        ?.replace("\\n", "\n")
-        ?: throw IllegalStateException()
-
-    return StringReader(pemPrivateKey).use {
-        val pemReader = PemReader(it)
-        val pemObject = pemReader.readPemObject()
-        val content = pemObject.content
-        val spec = PKCS8EncodedKeySpec(content)
-        val rsaFact = KeyFactory.getInstance("RSA")
-        rsaFact.generatePrivate(spec) as RSAPrivateKey
-    }
-}()
- */
 
 val loginProviders = listOf(
     OAuthServerSettings.OAuth2ServerSettings(
@@ -55,6 +34,13 @@ val loginProviders = listOf(
     )
 ).associateBy { it.name }
 
+data class LoginSession(
+    val id: Int,
+    val accessToken: String,
+    val expiresIn: Long,
+    val refreshToken: String?,
+)
+
 @Suppress("unused") // Referenced in application.conf
 @kotlin.jvm.JvmOverloads
 fun Application.module(testing: Boolean = false) {
@@ -63,10 +49,13 @@ fun Application.module(testing: Boolean = false) {
         level = Level.INFO
         filter { call -> call.request.path().startsWith("/") }
     }
+    install(Sessions) {
+        cookie<LoginSession>("LOGIN_SESSION", storage = SessionStorageMemory())
+    }
 
     authentication {
         oauth("gitHubOAuth") {
-            client = HttpClient(Apache)
+            client = HttpClient(CIO)
             providerLookup = { loginProviders[application.locations.resolve<login>(login::class, this).type] }
             urlProvider = { p -> redirectUrl(login(p.name), false) }
         }
@@ -74,25 +63,54 @@ fun Application.module(testing: Boolean = false) {
 
     routing {
         get<index> {
-            call.respondHtml {
-                head {
-                    title { +"index page" }
-                }
-                body {
-                    h1 {
-                        +"Try to login"
+            if (call.sessions.get<LoginSession>()?.accessToken.isNullOrEmpty()) {
+                call.respondHtml {
+                    head {
+                        title { +"index page" }
                     }
-                    p {
-                        a(href = locations.href(login())) {
-                            +"Login"
+                    body {
+                        h1 {
+                            +"Try to login"
+                        }
+                        p {
+                            a(href = locations.href(login())) {
+                                +"Login"
+                            }
+                        }
+                    }
+                }
+            } else {
+                call.respondHtml {
+                    head {
+                        title { +"index page" }
+                    }
+                    body {
+                        h1 {
+                            +"Try to logout"
+                        }
+                        p {
+                            form(
+                                method = FormMethod.post,
+                                action = "/logout"
+                            ) {
+                                name = "logout_form"
+                                a(href = "javascript:logout_form.submit()") {
+                                    +"Logout"
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
+        post<logout> {
+            call.sessions.clear<LoginSession>()
+            call.respondRedirect("/")
+        }
+
         authenticate("gitHubOAuth") {
-            location<login>() {
+            location<login> {
                 param("error") {
                     handle {
                         call.loginFailedPage(call.parameters.getAll("error").orEmpty())
@@ -114,6 +132,9 @@ fun Application.module(testing: Boolean = false) {
 
 @Location("/")
 class index()
+
+@Location("/logout")
+class logout()
 
 @Location("/login/{type?}")
 class login(val type: String = "")
@@ -243,7 +264,14 @@ private suspend fun ApplicationCall.loggedInSuccessResponse(callback: OAuthAcces
         val user = it.get<Account>("https://api.github.com/user") {}
         println(user)
 
-        // TODO Save (User, AccessToken, RefreshToken)
+        sessions.set(
+            LoginSession(
+                id = user.id,
+                accessToken = oauth2.accessToken,
+                expiresIn = oauth2.expiresIn,
+                refreshToken = oauth2.refreshToken,
+            )
+        )
 
         // Installationの取得
         val response = it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {}
