@@ -1,12 +1,13 @@
 package com.example
 
+import com.example.github.Account
+import com.example.github.GitHubClient
+import com.example.github.ListInstallationsResponse
+import com.example.github.ListInstalledRepositoriesResponse
 import io.ktor.application.*
 import io.ktor.auth.*
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
-import io.ktor.client.features.json.*
-import io.ktor.client.features.json.serializer.*
-import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.features.*
 import io.ktor.html.*
@@ -16,10 +17,7 @@ import io.ktor.response.*
 import io.ktor.routing.*
 import io.ktor.sessions.*
 import kotlinx.html.*
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import org.slf4j.event.Level
-import java.io.Closeable
 
 fun main(args: Array<String>): Unit =
     io.ktor.server.netty.EngineMain.main(args)
@@ -185,72 +183,6 @@ private suspend fun ApplicationCall.loginFailedPage(errors: List<String>) {
                 }
             }
         }
-    }
-}
-
-@Serializable
-data class Account(
-    val id: Int,
-    val login: String,
-)
-
-@Serializable
-data class Repository(
-    @SerialName("full_name")
-    val fullName: String,
-    @SerialName("owner")
-    val owner: Account,
-)
-
-@Serializable
-data class Installation(
-    val id: String,
-)
-
-@Serializable
-data class ListInstallationsResponse(
-    @SerialName("total_count")
-    val totalCount: Int,
-    val installations: List<Installation>
-)
-
-@Serializable
-data class ListInstalledRepositoriesResponse(
-    @SerialName("total_count")
-    val totalCount: Int,
-    val repositories: List<Repository>,
-)
-
-class GitHubClient(val accessToken: String) : Closeable {
-    val client = HttpClient(CIO).config {
-        install(JsonFeature) {
-            serializer = KotlinxSerializer(kotlinx.serialization.json.Json {
-                ignoreUnknownKeys = true
-                isLenient = true
-            })
-        }
-    }
-
-    override fun close() {
-        client.close()
-    }
-
-    suspend inline fun <reified T> get(
-        urlString: String,
-        block: HttpRequestBuilder.() -> Unit = {}
-    ): T = client.get(urlString) {
-        header("Accept", "application/vnd.github.v3+json")
-        header("Authorization", "token $accessToken")
-        block()
-    }
-
-    suspend inline fun <reified T> post(
-        urlString: String,
-        block: HttpRequestBuilder.() -> Unit = {}
-    ): T = client.post(urlString) {
-        header("Accept", "application/vnd.github.v3+json")
-        header("Authorization", "token $accessToken")
-        block()
     }
 }
 
