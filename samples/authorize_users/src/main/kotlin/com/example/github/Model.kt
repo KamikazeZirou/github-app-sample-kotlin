@@ -13,6 +13,7 @@ data class Account(
 data class Repository(
     @SerialName("full_name")
     val fullName: String,
+    val name: String,
     @SerialName("owner")
     val owner: Account,
 )
@@ -20,4 +21,5 @@ data class Repository(
 @Serializable
 data class Installation(
     val id: String,
+    val account: Account,
 )

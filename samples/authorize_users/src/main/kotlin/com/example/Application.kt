@@ -8,13 +8,16 @@ import io.ktor.application.*
 import io.ktor.auth.*
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.statement.*
 import io.ktor.features.*
 import io.ktor.html.*
 import io.ktor.http.*
+import io.ktor.http.content.*
 import io.ktor.locations.*
 import io.ktor.request.*
 import io.ktor.response.*
 import io.ktor.routing.*
+import io.ktor.serialization.*
 import io.ktor.sessions.*
 import kotlinx.html.*
 import org.slf4j.event.Level
@@ -43,6 +46,10 @@ data class LoginSession(
 @Suppress("unused") // Referenced in application.conf
 @kotlin.jvm.JvmOverloads
 fun Application.module(testing: Boolean = false) {
+    install(ContentNegotiation) {
+        json()
+    }
+
     install(Locations)
     install(CallLogging) {
         level = Level.INFO
@@ -61,6 +68,11 @@ fun Application.module(testing: Boolean = false) {
     }
 
     routing {
+        static("assets") {
+            files("css")
+            files("js")
+        }
+
         get<index> {
             call.sessions.get<LoginSession>()?.also {
                 call.postIssuePage(it)
@@ -71,6 +83,34 @@ fun Application.module(testing: Boolean = false) {
 
         post<logout> {
             call.sessions.clear<LoginSession>()
+            call.respondRedirect("/")
+        }
+
+        get<repositories> { path ->
+            val session = call.sessions.get<LoginSession>() ?: run {
+                call.respond(HttpStatusCode.Forbidden)
+                return@get
+            }
+
+            val response = GitHubClient(session.accessToken).use {
+                it.get<ListInstalledRepositoriesResponse>("https://api.github.com/user/installations/${path.installationId}/repositories")
+            }
+            call.respond(response)
+        }
+
+        post("/issues") {
+            val session = call.sessions.get<LoginSession>() ?: run {
+                call.respond(HttpStatusCode.Forbidden)
+                return@post
+            }
+
+            val params = call.receiveParameters()
+            val response: HttpResponse = GitHubClient(session.accessToken).use {
+                it.post("https://api.github.com/repos/${params["repo"]}/issues") {
+                    body = """{"title":"${params["title"]}","body":"${params["body"]}"}"""
+                }
+            }
+
             call.respondRedirect("/")
         }
 
@@ -101,8 +141,11 @@ class index()
 @Location("/logout")
 class logout()
 
+@Location("/installations/{installationId}/repositories")
+data class repositories(val installationId: String)
+
 @Location("/login/{type?}")
-class login(val type: String = "")
+data class login(val type: String = "")
 
 private fun <T : Any> ApplicationCall.redirectUrl(t: T, secure: Boolean = true): String {
     val hostPort = request.host()!! + request.port().let { port -> if (port == 80) "" else ":$port" }
@@ -132,41 +175,77 @@ private suspend fun ApplicationCall.indexPage() {
 }
 
 private suspend fun ApplicationCall.postIssuePage(loginSession: LoginSession) {
-//    val repositories = GitHubClient(loginSession.accessToken).use {
-        // Installationの取得
-//        val response = it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {}
-//
-//        val installation = response.installations.first()
-//        val response2 =
-//            it.get<ListInstalledRepositoriesResponse>("https://api.github.com/user/installations/${installation.id}/repositories") {}
-//        print(response2)
-//
-        // リポジトリにIssueを登録
-//        val repo = response2.repositories.first()
-//        val response3: HttpResponse = it.post("https://api.github.com/repos/${repo.fullName}/issues") {
-//            body = """{"title":"title","body":"body"}"""
-//        }
-//        print(response3)
-//
-//        response2.repositories
-//    }
+    val installations = GitHubClient(loginSession.accessToken).use {
+        it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {}.installations
+    }
 
     respondHtml {
         head {
             title { +"index page" }
+            script(type = "text/javascript", src="assets/index.js") {}
         }
         body {
             h1 {
-                +"Try to logout"
+                +"Try to post issue"
             }
-            p {
-                form(
-                    method = FormMethod.post,
-                    action = "/logout"
-                ) {
-                    name = "logout_form"
-                    a(href = "javascript:logout_form.submit()") {
-                        +"Logout"
+
+            form(
+                method = FormMethod.post,
+                action = "/issues"
+            ) {
+                div {
+                    label {
+                        htmlFor = "installations"
+                        +"Installations:"
+                    }
+                    select {
+                        id = "installations"
+                        name = "installations"
+                        installations.forEach {
+                            option {
+                                value = it.id
+                                +it.account.login
+                            }
+                        }
+                    }
+                }
+
+                div {
+                    label {
+                        htmlFor = "repositories"
+                        +"Repositories:"
+                    }
+                    select {
+                        id = "repositories"
+                        name = "repo"
+                    }
+                }
+
+                div {
+                    label {
+                        htmlFor = "title"
+                        +"Title:"
+                    }
+                    input(type = InputType.text) {
+                        id = "title"
+                        name = "title"
+                    }
+                }
+
+                div {
+                    label {
+                        htmlFor = "body"
+                        +"Body:"
+                    }
+                    textArea {
+                        id = "body"
+                        name = "body"
+                    }
+                }
+
+                div {
+                    input(type = InputType.submit) {
+                        value = "Post"
                     }
                 }
             }
