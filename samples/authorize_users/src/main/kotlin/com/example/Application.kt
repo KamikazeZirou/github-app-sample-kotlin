@@ -8,9 +8,9 @@ import io.ktor.application.*
 import io.ktor.auth.*
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
-import io.ktor.client.statement.*
 import io.ktor.features.*
 import io.ktor.html.*
+import io.ktor.http.*
 import io.ktor.locations.*
 import io.ktor.request.*
 import io.ktor.response.*
@@ -34,6 +34,7 @@ val loginProviders = listOf(
 
 data class LoginSession(
     val id: Int,
+    val name: String,
     val accessToken: String,
     val expiresIn: Long,
     val refreshToken: String?,
@@ -61,10 +62,10 @@ fun Application.module(testing: Boolean = false) {
 
     routing {
         get<index> {
-            if (call.sessions.get<LoginSession>()?.accessToken.isNullOrEmpty()) {
+            call.sessions.get<LoginSession>()?.also {
+                call.postIssuePage(it)
+            } ?: run {
                 call.indexPage()
-            } else {
-                call.postIssuePage()
             }
         }
 
@@ -130,7 +131,26 @@ private suspend fun ApplicationCall.indexPage() {
     }
 }
 
-private suspend fun ApplicationCall.postIssuePage() {
+private suspend fun ApplicationCall.postIssuePage(loginSession: LoginSession) {
+//    val repositories = GitHubClient(loginSession.accessToken).use {
+        // Installationの取得
+//        val response = it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {}
+//
+//        val installation = response.installations.first()
+//        val response2 =
+//            it.get<ListInstalledRepositoriesResponse>("https://api.github.com/user/installations/${installation.id}/repositories") {}
+//        print(response2)
+//
+        // リポジトリにIssueを登録
+//        val repo = response2.repositories.first()
+//        val response3: HttpResponse = it.post("https://api.github.com/repos/${repo.fullName}/issues") {
+//            body = """{"title":"title","body":"body"}"""
+//        }
+//        print(response3)
+//
+//        response2.repositories
+//    }
+
     respondHtml {
         head {
             title { +"index page" }
@@ -195,63 +215,23 @@ private suspend fun ApplicationCall.loginFailedPage(errors: List<String>) {
 }
 
 private suspend fun ApplicationCall.loggedInSuccessResponse(callback: OAuthAccessTokenResponse) {
-    val oauth2 = callback as? OAuthAccessTokenResponse.OAuth2 ?: return
-    println(oauth2)
+    val oauth2 = callback as? OAuthAccessTokenResponse.OAuth2 ?: run {
+        respond(HttpStatusCode.NotImplemented, "Unsupported OAuth Token Response.")
+        return
+    }
 
-    // installationのリストを取得する
-    val client = GitHubClient(oauth2.accessToken)
-    val repositories = client.use {
+    GitHubClient(oauth2.accessToken).use {
         val user = it.get<Account>("https://api.github.com/user") {}
-        println(user)
-
         sessions.set(
             LoginSession(
                 id = user.id,
+                name = user.login,
                 accessToken = oauth2.accessToken,
                 expiresIn = oauth2.expiresIn,
                 refreshToken = oauth2.refreshToken,
             )
         )
-
-        // Installationの取得
-        val response = it.get<ListInstallationsResponse>("https://api.github.com/user/installations") {}
-        println(response)
-
-        val installation = response.installations.first()
-        val response2 =
-            it.get<ListInstalledRepositoriesResponse>("https://api.github.com/user/installations/${installation.id}/repositories") {}
-        print(response2)
-
-        // リポジトリにIssueを登録
-        val repo = response2.repositories.first()
-        val response3: HttpResponse = it.post("https://api.github.com/repos/${repo.fullName}/issues") {
-            body = """{"title":"title","body":"body"}"""
-        }
-        print(response3)
-
-        response2.repositories
     }
 
-    respondHtml {
-        head {
-            title { +"Logged in" }
-        }
-        body {
-            h1 {
-                +"You are logged in"
-            }
-            p {
-                +"Your token is $callback"
-            }
-
-            ul {
-                repositories.forEach {
-                    li {
-                        +it.fullName
-                    }
-                }
-            }
-        }
-
-    }
+    respondRedirect("/")
 }
