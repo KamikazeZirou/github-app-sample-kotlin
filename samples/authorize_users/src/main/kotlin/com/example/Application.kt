@@ -62,43 +62,9 @@ fun Application.module(testing: Boolean = false) {
     routing {
         get<index> {
             if (call.sessions.get<LoginSession>()?.accessToken.isNullOrEmpty()) {
-                call.respondHtml {
-                    head {
-                        title { +"index page" }
-                    }
-                    body {
-                        h1 {
-                            +"Try to login"
-                        }
-                        p {
-                            a(href = locations.href(login())) {
-                                +"Login"
-                            }
-                        }
-                    }
-                }
+                call.indexPage()
             } else {
-                call.respondHtml {
-                    head {
-                        title { +"index page" }
-                    }
-                    body {
-                        h1 {
-                            +"Try to logout"
-                        }
-                        p {
-                            form(
-                                method = FormMethod.post,
-                                action = "/logout"
-                            ) {
-                                name = "logout_form"
-                                a(href = "javascript:logout_form.submit()") {
-                                    +"Logout"
-                                }
-                            }
-                        }
-                    }
-                }
+                call.postIssuePage()
             }
         }
 
@@ -144,6 +110,48 @@ private fun <T : Any> ApplicationCall.redirectUrl(t: T, secure: Boolean = true):
         else -> "http"
     }
     return "$protocol://$hostPort${application.locations.href(t)}"
+}
+
+private suspend fun ApplicationCall.indexPage() {
+    respondHtml {
+        head {
+            title { +"index page" }
+        }
+        body {
+            h1 {
+                +"Try to login"
+            }
+            p {
+                a(href = locations.href(login())) {
+                    +"Login"
+                }
+            }
+        }
+    }
+}
+
+private suspend fun ApplicationCall.postIssuePage() {
+    respondHtml {
+        head {
+            title { +"index page" }
+        }
+        body {
+            h1 {
+                +"Try to logout"
+            }
+            p {
+                form(
+                    method = FormMethod.post,
+                    action = "/logout"
+                ) {
+                    name = "logout_form"
+                    a(href = "javascript:logout_form.submit()") {
+                        +"Logout"
+                    }
+                }
+            }
+        }
+    }
 }
 
 private suspend fun ApplicationCall.loginPage() {
